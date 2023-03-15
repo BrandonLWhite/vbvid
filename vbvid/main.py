@@ -3,6 +3,12 @@ from typing import List
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+import argparse
+
+JOINED_FILE_NAME_ROOT='match'
+RECODED_SUBDIR='recoded'
+RECODE_CRF_QUALITY=28
+
 
 @dataclass
 class File:
@@ -11,11 +17,28 @@ class File:
 
 
 def main():
-    _src_path = '/mnt/c/Users/brand/Videos/2023-02-25 AP 111'
-    src_path = Path(_src_path)
+    args = parse_args()
+    src_path = Path(args.path)
 
-    # group_files(src_path)
-    join_files(src_path)
+    joined_dirs = list_dirs(src_path, f'{JOINED_FILE_NAME_ROOT}*')
+
+    if joined_files:=list_files(src_path, f'{JOINED_FILE_NAME_ROOT}*.*'):
+        recode_files(joined_files)
+    elif joined_dirs:
+        # If there are no group* dirs, then perform grouping operation
+        join_files(src_path)
+    else:
+        # Otherwise move files into group subdirs.  Then you can double check that they are all for the same/correct
+        # game before running the join operation.
+        group_files(src_path)
+
+
+def list_dirs(parent: Path, glob: str) -> List[Path]:
+    return [path for path in parent.glob(glob) if path.is_dir()]
+
+
+def list_files(parent: Path, glob: str) -> List[Path]:
+    return [path for path in parent.glob(glob) if path.is_file()]
 
 
 def group_files(src_path: Path):
@@ -29,7 +52,7 @@ def group_files(src_path: Path):
     prev_file_timestamp = None
     group = None
 
-    for file in get_sorted_files():
+    for file in get_sorted_files(src_path):
         timestamp_delta = file.timestamp - prev_file_timestamp if prev_file_timestamp else timedelta(minutes=999)
         annotation = ''
         if timestamp_delta > timedelta(minutes=10):
@@ -42,7 +65,7 @@ def group_files(src_path: Path):
         group.append(file)
 
     for idx, group in enumerate(file_groups):
-        group_path = src_path / f'group{idx}'
+        group_path = src_path / f'match{idx+1}'
         print(str(group_path))
         group_path.mkdir(exist_ok=True)
         for file in group:
@@ -73,6 +96,18 @@ def get_sorted_files(src_path: Path) -> List[File]:
 
     return files
 
+
+def recode_files(file_paths: List[Path]):
+    for file in file_paths:
+        output_path = file.parent / RECODED_SUBDIR / file.name
+        os.system(f'ffmpeg -c:v hevc -crf {RECODE_CRF_QUALITY} -i "{file}" "{output_path}"')
+
+
+def parse_args():
+    argparser = argparse.ArgumentParser()
+    argparser.add_argument("path")
+
+    return argparser.parse_args()
 
 if __name__ == '__main__':
     main()
