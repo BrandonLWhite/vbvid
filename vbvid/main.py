@@ -96,11 +96,17 @@ def get_sorted_files(src_path: Path) -> List[File]:
 
     return files
 
-
+# HEVC encoder version 3.2.1+1-b5c86a64bbbe
 def recode_files(file_paths: List[Path]):
     for file in file_paths:
         output_path = file.parent / RECODED_SUBDIR / file.name
-        os.system(f'ffmpeg -c:v hevc -crf {RECODE_CRF_QUALITY} -i "{file}" "{output_path}"')
+        output_path.parent.mkdir(exist_ok=True)
+
+        # scale_arg = '-vf scale=1920:1080'
+        # scale_arg = '-vf scale=2704:1520'
+        scale_arg = ''
+        os.system(f'ffmpeg -i "{file}" -codec:v libx265 -vtag hvc1 -preset veryfast {scale_arg} -crf {RECODE_CRF_QUALITY} -movflags faststart "{output_path}"')
+        # return # TEMP TEST
 
 
 def parse_args():
