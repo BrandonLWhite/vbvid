@@ -6,7 +6,7 @@ from pathlib import Path
 import argparse
 
 JOINED_FILE_NAME_ROOT='match'
-RECODED_SUBDIR='recoded'
+RECODED_SUBDIR='.recoded'
 RECODE_CRF_QUALITY=28
 
 
@@ -18,23 +18,31 @@ class File:
 
 def main():
     args = parse_args()
-    src_path = Path(args.path)
+    src_path = Path(args.path).resolve()
 
-    joined_dirs = list_dirs(src_path, f'{JOINED_FILE_NAME_ROOT}*')
+    grouped_dirs = list_dirs(src_path)
 
-    if joined_files:=list_files(src_path, f'{JOINED_FILE_NAME_ROOT}*.*'):
-        recode_files(joined_files)
-    elif joined_dirs:
-        # If there are no group* dirs, then perform grouping operation
-        join_files(src_path)
-    else:
-        # Otherwise move files into group subdirs.  Then you can double check that they are all for the same/correct
-        # game before running the join operation.
+    # move files into group subdirs.  Then you can double check that they are all for the same/correct
+    # game before running the join operation.
+    if not grouped_dirs:
         group_files(src_path)
+        return
+
+    # If there is no subdirs, then perform group_files operation.
+    for group_dir in grouped_dirs:
+        joined_file = group_dir.with_suffix('.mp4')
+        if not joined_file.exists():
+            join_files(group_dir, joined_file)
+
+    if joined_files:=list_files(src_path, '*.mp4'):
+        recode_files(joined_files)
 
 
-def list_dirs(parent: Path, glob: str) -> List[Path]:
-    return [path for path in parent.glob(glob) if path.is_dir()]
+def list_dirs(parent: Path) -> List[Path]:
+    return [
+        path for path in parent.iterdir()
+        if path.is_dir() and not path.name.startswith('.')
+    ]
 
 
 def list_files(parent: Path, glob: str) -> List[Path]:
@@ -72,18 +80,15 @@ def group_files(src_path: Path):
             file.path.rename(group_path / file.path.name)
 
 
-def join_files(src_path: Path):
-    for subdir in src_path.iterdir():
-        if not subdir.is_dir(): continue
-        files = get_sorted_files(subdir)
-        groupfile_path = subdir.with_suffix('.txt')
-        with open(groupfile_path, 'w') as outfile:
-            for file in files:
-                outfile.write(f"file '{file.path}'\n")
+def join_files(src_path: Path, joined_path: Path):
+    files = get_sorted_files(src_path)
+    groupfile_path = src_path.with_suffix('.txt')
+    with open(groupfile_path, 'w') as outfile:
+        for file in files:
+            outfile.write(f"file '{file.path}'\n")
 
-        joinedfile_path = subdir.with_suffix('.mp4')
-        os.system(f'ffmpeg -f concat -safe 0 -i "{groupfile_path}" -c copy "{joinedfile_path}"')
-        groupfile_path.unlink()
+    os.system(f'ffmpeg -f concat -safe 0 -i "{groupfile_path}" -c copy "{joined_path}"')
+    groupfile_path.unlink()
 
 def get_sorted_files(src_path: Path) -> List[File]:
     files: List[File] = []
@@ -92,7 +97,7 @@ def get_sorted_files(src_path: Path) -> List[File]:
             file_timestamp = datetime.fromtimestamp(file.stat().st_mtime)
             files.append(File(path=file, timestamp=file_timestamp))
 
-    files.sort(key=lambda file: file.timestamp)
+    files.sort(key=lambda file: file.path.stem)
 
     return files
 
@@ -102,11 +107,17 @@ def recode_files(file_paths: List[Path]):
         output_path = file.parent / RECODED_SUBDIR / file.name
         output_path.parent.mkdir(exist_ok=True)
 
+        if output_path.exists(): continue
+
         # scale_arg = '-vf scale=1920:1080'
         # scale_arg = '-vf scale=2704:1520'
-        scale_arg = ''
-        os.system(f'ffmpeg -i "{file}" -codec:v libx265 -vtag hvc1 -preset veryfast {scale_arg} -crf {RECODE_CRF_QUALITY} -movflags faststart "{output_path}"')
-        # return # TEMP TEST
+        # scale_arg = ''
+        # os.system(f'ffmpeg -i "{file}" -codec:v libx265 -vtag hvc1 -preset veryfast {scale_arg} -crf {RECODE_CRF_QUALITY} -movflags faststart "{output_path}"')
+        filter_graph_arg = '-vf crop=3840:2880,eq=gamma=1.5'
+        filter_graph_arg = ''
+        command = f'ffmpeg -hwaccel auto -i "{file}" {filter_graph_arg} -codec:v hevc_nvenc -preset:v p7 -rc-lookahead:v 32 -rc:v constqp -qp:v 38 -b:v 0 -movflags faststart "{output_path}"'
+        print(command)
+        os.system(command)
 
 
 def parse_args():
