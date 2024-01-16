@@ -6,6 +6,8 @@ from pathlib import Path
 import argparse
 
 JOINED_FILE_NAME_ROOT='match'
+GROUPED_SUBDIR='.grouped'
+JOINED_SUBDIR='.joined'
 RECODED_SUBDIR='.recoded'
 RECODE_CRF_QUALITY=28
 
@@ -19,8 +21,10 @@ class File:
 def main():
     args = parse_args()
     src_path = Path(args.path).resolve()
+    grouped_path = src_path / GROUPED_SUBDIR
+    joined_path = src_path / JOINED_SUBDIR
 
-    grouped_dirs = list_dirs(src_path)
+    grouped_dirs = list_dirs(grouped_path)
 
     # move files into group subdirs.  Then you can double check that they are all for the same/correct
     # game before running the join operation.
@@ -28,13 +32,13 @@ def main():
         group_files(src_path)
         return
 
-    # If there is no subdirs, then perform group_files operation.
+    # TODO: Implement .joined/ subdir
     for group_dir in grouped_dirs:
-        joined_file = group_dir.with_suffix('.mp4')
+        joined_file = joined_path / group_dir.with_suffix('.mp4').name
         if not joined_file.exists():
             join_files(group_dir, joined_file)
 
-    if joined_files:=list_files(src_path, '*.mp4'):
+    if joined_files:=list_files(joined_path, '*.mp4'):
         recode_files(joined_files)
 
 
@@ -87,6 +91,8 @@ def join_files(src_path: Path, joined_path: Path):
         for file in files:
             outfile.write(f"file '{file.path}'\n")
 
+    joined_path.parent.mkdir(exist_ok=True)
+
     os.system(f'ffmpeg -f concat -safe 0 -i "{groupfile_path}" -c copy "{joined_path}"')
     groupfile_path.unlink()
 
@@ -102,6 +108,9 @@ def get_sorted_files(src_path: Path) -> List[File]:
     return files
 
 # HEVC encoder version 3.2.1+1-b5c86a64bbbe
+#
+# HW based scaling example:
+# ffmpeg -hwaccel cuda -hwaccel_output_format cuda -i "C:\Users\brand\Videos\MyVideos\2024 AP 162\2023-12-29 Countdown City Classic\.joined\2-EP Strive 162.mp4" -vf "scale_cuda=1920:1080" -tag:v hvc1 -codec:v hevc_nvenc -preset:v p7 -rc-lookahead:v 32 -rc:v constqp -qp:v 38 -b:v 0 -movflags faststart "C:\Users\brand\Videos\MyVideos\2024 AP 162\2023-12-29 Countdown City Classic\.joined\.recoded\2-EP Strive 162.mp4"
 def recode_files(file_paths: List[Path]):
     for file in file_paths:
         output_path = file.parent / RECODED_SUBDIR / file.name
@@ -111,11 +120,13 @@ def recode_files(file_paths: List[Path]):
 
         # scale_arg = '-vf scale=1920:1080'
         # scale_arg = '-vf scale=2704:1520'
-        # scale_arg = ''
+        scale_arg = ''
         # os.system(f'ffmpeg -i "{file}" -codec:v libx265 -vtag hvc1 -preset veryfast {scale_arg} -crf {RECODE_CRF_QUALITY} -movflags faststart "{output_path}"')
-        filter_graph_arg = '-vf crop=3840:2880,eq=gamma=1.5'
+        # filter_graph_arg = '-filter:v crop=3840:2880,eq=gamma=1.5'
+        # filter_graph_arg = '-filter:v scale_npp=1920:1080'
         filter_graph_arg = ''
-        command = f'ffmpeg -hwaccel auto -i "{file}" {filter_graph_arg} -codec:v hevc_nvenc -preset:v p7 -rc-lookahead:v 32 -rc:v constqp -qp:v 38 -b:v 0 -movflags faststart "{output_path}"'
+        # -tag:v hvc1 is necessary for MacOS and iOS playback compatibility.
+        command = f'ffmpeg -hwaccel auto -i "{file}" -tag:v hvc1 {filter_graph_arg} -codec:v hevc_nvenc -preset:v p7 -rc-lookahead:v 32 -rc:v constqp -qp:v 38 -b:v 0 -movflags faststart "{output_path}"'
         print(command)
         os.system(command)
 
