@@ -1,4 +1,6 @@
 import os
+import json
+import subprocess
 from typing import List
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -32,7 +34,6 @@ def main():
         group_files(src_path)
         return
 
-    # TODO: Implement .joined/ subdir
     for group_dir in grouped_dirs:
         joined_file = joined_path / group_dir.with_suffix('.mp4').name
         if not joined_file.exists():
@@ -113,22 +114,39 @@ def get_sorted_files(src_path: Path) -> List[File]:
 # ffmpeg -hwaccel cuda -hwaccel_output_format cuda -i "C:\Users\brand\Videos\MyVideos\2024 AP 162\2023-12-29 Countdown City Classic\.joined\2-EP Strive 162.mp4" -vf "scale_cuda=1920:1080" -tag:v hvc1 -codec:v hevc_nvenc -preset:v p7 -rc-lookahead:v 32 -rc:v constqp -qp:v 38 -b:v 0 -movflags faststart "C:\Users\brand\Videos\MyVideos\2024 AP 162\2023-12-29 Countdown City Classic\.joined\.recoded\2-EP Strive 162.mp4"
 def recode_files(file_paths: List[Path]):
     for file in file_paths:
-        output_path = file.parent / RECODED_SUBDIR / file.name
+        output_path = file.parent.parent / RECODED_SUBDIR / file.name
         output_path.parent.mkdir(exist_ok=True)
 
-        if output_path.exists(): continue
+        if not output_path.exists():
+            recode_file(file, output_path)
 
-        # scale_arg = '-vf scale=1920:1080'
-        # scale_arg = '-vf scale=2704:1520'
-        scale_arg = ''
-        # os.system(f'ffmpeg -i "{file}" -codec:v libx265 -vtag hvc1 -preset veryfast {scale_arg} -crf {RECODE_CRF_QUALITY} -movflags faststart "{output_path}"')
-        # filter_graph_arg = '-filter:v crop=3840:2880,eq=gamma=1.5'
-        # filter_graph_arg = '-filter:v scale_npp=1920:1080'
-        filter_graph_arg = ''
-        # -tag:v hvc1 is necessary for MacOS and iOS playback compatibility.
-        command = f'ffmpeg -hwaccel auto -i "{file}" -tag:v hvc1 {filter_graph_arg} -codec:v hevc_nvenc -preset:v p7 -rc-lookahead:v 32 -rc:v constqp -qp:v 38 -b:v 0 -movflags faststart "{output_path}"'
-        print(command)
-        os.system(command)
+
+def recode_file(file: Path, output_path: Path):
+    video_info = get_video_info(file)
+    # print(video_info['width'], video_info['height'])
+
+    qp_value = 38 if video_info['width'] > 3000 else 32
+
+    # scale_arg = '-vf scale=1920:1080'
+    # scale_arg = '-vf scale=2704:1520'
+    scale_arg = ''
+    # os.system(f'ffmpeg -i "{file}" -codec:v libx265 -vtag hvc1 -preset veryfast {scale_arg} -crf {RECODE_CRF_QUALITY} -movflags faststart "{output_path}"')
+    # filter_graph_arg = '-filter:v crop=3840:2880,eq=gamma=1.5'
+    # filter_graph_arg = '-filter:v scale_npp=1920:1080'
+    filter_graph_arg = ''
+    # -tag:v hvc1 is necessary for MacOS and iOS playback compatibility.
+    command = f'ffmpeg -hwaccel auto -i "{file}" -tag:v hvc1 {filter_graph_arg} -codec:v hevc_nvenc -preset:v p7 -rc-lookahead:v 32 -rc:v constqp -qp:v {qp_value} -b:v 0K -movflags faststart "{output_path}"'
+    print(command)
+    os.system(command)
+
+
+def get_video_info(file: Path) -> dict:
+    probe_command = f'ffprobe -v quiet -print_format json -show_format -show_streams "{file}"'
+    print(probe_command)
+    probe_result = subprocess.run(probe_command, capture_output=True)
+    probe_info = json.loads(probe_result.stdout)
+    video_streams = [stream for stream in probe_info['streams'] if stream['codec_type'] == 'video']
+    return  video_streams[0]
 
 
 def parse_args():
