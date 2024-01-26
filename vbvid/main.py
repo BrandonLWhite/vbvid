@@ -25,13 +25,19 @@ def main():
     src_path = Path(args.path).resolve()
     grouped_path = src_path / GROUPED_SUBDIR
     joined_path = src_path / JOINED_SUBDIR
+    recoded_path = src_path / RECODED_SUBDIR
+
+    if args.recode:
+        print('Recode', src_path)
+        recode_files(src_path, src_path / RECODED_SUBDIR)
+        return
 
     grouped_dirs = list_dirs(grouped_path)
 
     # move files into group subdirs.  Then you can double check that they are all for the same/correct
     # game before running the join operation.
     if not grouped_dirs:
-        group_files(src_path)
+        group_files(src_path, recoded_path)
         return
 
     for group_dir in grouped_dirs:
@@ -39,8 +45,7 @@ def main():
         if not joined_file.exists():
             join_files(group_dir, joined_file)
 
-    if joined_files:=list_files(joined_path, '*.mp4'):
-        recode_files(joined_files)
+    recode_files(joined_path, recoded_path)
 
 
 def list_dirs(parent: Path) -> List[Path]:
@@ -108,14 +113,16 @@ def get_sorted_files(src_path: Path) -> List[File]:
 
     return files
 
+
 # HEVC encoder version 3.2.1+1-b5c86a64bbbe
 #
 # HW based scaling example:
 # ffmpeg -hwaccel cuda -hwaccel_output_format cuda -i "C:\Users\brand\Videos\MyVideos\2024 AP 162\2023-12-29 Countdown City Classic\.joined\2-EP Strive 162.mp4" -vf "scale_cuda=1920:1080" -tag:v hvc1 -codec:v hevc_nvenc -preset:v p7 -rc-lookahead:v 32 -rc:v constqp -qp:v 38 -b:v 0 -movflags faststart "C:\Users\brand\Videos\MyVideos\2024 AP 162\2023-12-29 Countdown City Classic\.joined\.recoded\2-EP Strive 162.mp4"
-def recode_files(file_paths: List[Path]):
-    for file in file_paths:
-        output_path = file.parent.parent / RECODED_SUBDIR / file.name
-        output_path.parent.mkdir(exist_ok=True)
+def recode_files(src_path: Path, dest_dir: Path):
+    dest_dir.mkdir(exist_ok=True)
+
+    for file in list_files(src_path, '*.mp4'):
+        output_path = dest_dir / file.name
 
         if not output_path.exists():
             recode_file(file, output_path)
@@ -151,7 +158,8 @@ def get_video_info(file: Path) -> dict:
 
 def parse_args():
     argparser = argparse.ArgumentParser()
-    argparser.add_argument("path")
+    argparser.add_argument('path')
+    argparser.add_argument('--recode', action='store_true', description='Just perform the recode step in a source directory.')
 
     return argparser.parse_args()
 
