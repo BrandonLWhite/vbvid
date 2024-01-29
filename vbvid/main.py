@@ -159,7 +159,7 @@ def get_video_info(file: Path) -> dict:
 def parse_args():
     argparser = argparse.ArgumentParser()
     argparser.add_argument('path')
-    argparser.add_argument('--recode', action='store_true', description='Just perform the recode step in a source directory.')
+    argparser.add_argument('--recode', action='store_true', help='Just perform the recode step in a source directory.')
 
     return argparser.parse_args()
 
