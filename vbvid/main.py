@@ -37,7 +37,7 @@ def main():
     # move files into group subdirs.  Then you can double check that they are all for the same/correct
     # game before running the join operation.
     if not grouped_dirs:
-        group_files(src_path, recoded_path)
+        group_files(src_path, grouped_path)
         return
 
     for group_dir in grouped_dirs:
@@ -49,6 +49,9 @@ def main():
 
 
 def list_dirs(parent: Path) -> List[Path]:
+    if not parent.exists():
+        return []
+
     return [
         path for path in parent.iterdir()
         if path.is_dir() and not path.name.startswith('.')
@@ -59,7 +62,7 @@ def list_files(parent: Path, glob: str) -> List[Path]:
     return [path for path in parent.glob(glob) if path.is_file()]
 
 
-def group_files(src_path: Path):
+def group_files(src_path: Path, grouped_path: Path):
     file_groups: List[List[File]] = []
 
     def new_group():
@@ -83,9 +86,10 @@ def group_files(src_path: Path):
         group.append(file)
 
     for idx, group in enumerate(file_groups):
-        group_path = src_path / f'match{idx+1}'
+        group_path = grouped_path / f'match{idx+1}'
         print(str(group_path))
-        group_path.mkdir(exist_ok=True)
+
+        group_path.mkdir(exist_ok=True, parents=True)
         for file in group:
             file.path.rename(group_path / file.path.name)
 
@@ -106,7 +110,11 @@ def get_sorted_files(src_path: Path) -> List[File]:
     files: List[File] = []
     for file in src_path.iterdir():
         if file.is_file() and file.suffix.lower() in ('.mp4'):
+            # Have to use modified time (st_mtime) because on windows it doesn't seem that
+            # I can set st_ctime from code when creating the file.  Doing so just appears to affect
+            # the mtime.
             file_timestamp = datetime.fromtimestamp(file.stat().st_mtime)
+            print(file.name, file_timestamp)
             files.append(File(path=file, timestamp=file_timestamp))
 
     files.sort(key=lambda file: file.path.stem)
