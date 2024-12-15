@@ -18,6 +18,7 @@ RECODE_CRF_QUALITY=28
 class File:
     path: Path
     timestamp: datetime
+    metadata: dict
 
 
 def main():
@@ -110,12 +111,19 @@ def get_sorted_files(src_path: Path) -> List[File]:
     files: List[File] = []
     for file in src_path.iterdir():
         if file.is_file() and file.suffix.lower() in ('.mp4'):
-            # Have to use modified time (st_mtime) because on windows it doesn't seem that
-            # I can set st_ctime from code when creating the file.  Doing so just appears to affect
-            # the mtime.
-            file_timestamp = datetime.fromtimestamp(file.stat().st_mtime)
+             # This slows things down quite a lot.  Need to figure out a better way.  Probably fork several async calls.
+             # Or perhaps there is a more specific set of args I can pass to ffprobe that runs faster and yields less.
+             # Try `ffprobe -v quiet -print_format json -show_entries format_tags=creation_time "blah\GX010724.MP4"`
+             # Output is like:
+    # "format": {
+    #     "tags": {
+    #         "creation_time": "2024-07-10T15:33:57.000000Z"
+    #     }
+    # }
+            metadata = get_video_info(file)
+            file_timestamp = datetime.fromisoformat(metadata['tags']['creation_time'])
             print(file.name, file_timestamp)
-            files.append(File(path=file, timestamp=file_timestamp))
+            files.append(File(path=file, timestamp=file_timestamp, metadata=metadata))
 
     files.sort(key=lambda file: file.path.stem)
 
@@ -157,11 +165,11 @@ def recode_file(file: Path, output_path: Path):
 
 def get_video_info(file: Path) -> dict:
     probe_command = f'ffprobe -v quiet -print_format json -show_format -show_streams "{file}"'
-    print(probe_command)
+    # print(probe_command)
     probe_result = subprocess.run(probe_command, capture_output=True)
     probe_info = json.loads(probe_result.stdout)
     video_streams = [stream for stream in probe_info['streams'] if stream['codec_type'] == 'video']
-    return  video_streams[0]
+    return video_streams[0]
 
 
 def parse_args():
